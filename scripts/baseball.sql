@@ -82,28 +82,190 @@ WHERE yearid >1919
 GROUP BY decade
 ORDER BY decade
 
-SELECT SUM(hr)
+--SELECT SUM(hr)
 
 --Answer: On average, the HRs and SOs seem to be trending up over time, with strikeouts increasing more consistently.
 
 --Question 6: Find the player who had the most success stealing bases in 2016, where __success__ is measured as the percentage of stolen base attempts which are successful. (A stolen base attempt results either in a stolen base or being caught stealing.) Consider only players who attempted _at least_ 20 stolen bases.
 
-WITH steals AS(SELECT DISTINCT CONCAT(p.namefirst,' ', p.namelast) AS name
-					, ((b.sb+b.cs)+(bp.sb+bp.cs)) AS stolen_base_attempt
-					, (b.sb+bp.sb) AS stolen_bases
-					, (b.cs+bp.cs) AS caught
-		FROM (SELECT *
-				FROM batting AS b
-			INNER JOIN battingpost AS bp
-				USING (playerid))
-			INNER JOIN people AS p
+WITH steals AS(SELECT (CONCAT(p.namefirst,' ', p.namelast)) AS name
+					, (full_batting.sb+full_batting.cs) AS stolen_base_attempt
+					, (full_batting.sb) AS stolen_bases
+					, (full_batting.cs) AS caught
+					, (full_batting.playerid) AS playerid
+		FROM people AS p
+			INNER JOIN (SELECT   		SUM (b1.sb) AS sb
+								, 		SUM (b1.cs) AS cs
+								,		b1.yearid AS yearid
+								,		b1.playerid AS playerid
+						FROM  battingpost AS b1
+						WHERE b1.yearid = 2016
+						GROUP BY b1.playerid, b1.yearid
+					UNION
+						SELECT 	 		SUM (b2.sb) AS sb
+								, 		SUM (b2.cs) AS cs
+								,		b2.yearid AS yearid
+								,		b2.playerid AS playerid
+						FROM batting AS b2
+						WHERE b2.yearid = 2016
+						GROUP BY b2.playerid, b2.yearid) AS full_batting
 				USING (playerid)
-		WHERE 	b.yearid = 2016
-			AND ((b.sb+b.cs)+(bp.sb+bp.cs)) > 19
+		WHERE 	full_batting.yearid = 2016
+			AND (full_batting.sb+full_batting.cs) > 19
 		ORDER BY stolen_bases DESC
 		)
 
-SELECT 	steals.name
-	,	(steals.stolen_bases/steals.stolen_base_attempt)*100 AS success_perc
+/*SELECT sb,cs
+FROM batting
+WHERE 	playerid ='villajo01'
+		AND yearid = 2016
+
+SELECT sb, cs
+FROM battingpost
+WHERE 	playerid ='villajo01'
+		AND yearid = 2016*/
+
+SELECT 	DISTINCT steals.name
+	,	steals.stolen_bases
+	,	steals.stolen_base_attempt
+	,	ROUND((CAST(steals.stolen_bases AS numeric))/(CAST(steals.stolen_base_attempt AS numeric))*100, 2) AS success_rate
 FROM  steals
-ORDER BY success_perc DESC
+ORDER BY success_rate desc
+
+
+--Answer : Chris Owings had the most success stealing bases with a success rate of 91.3%.
+
+
+--Question 7: From 1970 – 2016, what is the largest number of wins for a team that did not win the world series? What is the smallest number of wins for a team that did win the world series? Doing this will probably result in an unusually small number of wins for a world series champion – determine why this is the case. Then redo your query, excluding the problem year. How often from 1970 – 2016 was it the case that a team with the most wins also won the world series? What percentage of the time?
+
+SELECT MAX(w) AS wins, yearid, wswin
+FROM teams
+WHERE wswin = 'N'
+	AND	yearid > 1969
+	AND yearid < 2017
+	AND yearid <>1981
+GROUP BY yearid, wswin
+ORDER BY wins DESC
+
+SELECT MIN(w) AS wins, yearid
+FROM teams
+WHERE 	wswin = 'Y'
+	AND	yearid > 1969
+	AND yearid < 2017
+	AND yearid <> 1981 --This year was an anomaly due to the MLB Strike.
+GROUP BY yearid
+ORDER BY wins
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+--Solving for percentage of time teams had most wins and WS win begins here
+
+
+WITH wswins AS (SELECT MAX(w) AS wins, yearid, wswin
+FROM teams
+WHERE wswin = 'Y'
+	AND	yearid > 1969
+	AND yearid < 2017
+	AND yearid <>1981
+GROUP BY yearid, wswin
+ORDER BY yearid DESC),
+
+wslosses AS (SELECT MAX(w) AS wins, yearid, wswin
+FROM teams
+WHERE wswin = 'N'
+	AND	yearid > 1969
+	AND yearid < 2017
+	AND yearid <>1981
+GROUP BY yearid, wswin
+ORDER BY yearid DESC),
+
+
+agg_ws AS (SELECT wswins.wins AS wswins, wslosses.wins AS wslosses, yearid
+FROM wswins
+INNER JOIN wslosses
+	USING (yearid)
+	ORDER BY yearid),
+
+wins_with_max AS 
+				(SELECT 	SUM(CASE 
+				WHEN agg_ws.wswins >= agg_ws.wslosses 
+				THEN 1 ELSE 0
+				END) AS wins
+				,	COUNT(yearid) AS year_count
+FROM agg_ws)
+
+SELECT ROUND((wins::numeric/year_count::numeric), 2)*100 AS percent_of_time
+FROM wins_with_max
+
+
+--Answer: From 1970-2016, the largest number of wins for a team that did not win the WS was 116, and the lowest number of wins for a team that did win the WS was 63 wins in 1981. The low number of games played was due to the 1981 MLB Strike. From 1970-2016, the team with the most wins also won the world series ~27% of the time.
+
+
+--Question 8: Using the attendance figures from the homegames table, find the teams and parks which had the top 5 average attendance per game in 2016 (where average attendance is defined as total attendance divided by number of games). Only consider parks where there were at least 10 games played. Report the park name, team name, and average attendance. Repeat for the lowest 5 average attendance.
+
+WITH TOP_5 AS (SELECT t.park AS Park, t.name AS Team, ROUND(AVG(t.attendance/t.ghome), 2) AS avg_att
+FROM teams AS t
+WHERE 	yearid = 2016
+	AND t.ghome > 9
+GROUP BY t.park, t.name
+ORDER BY avg_att DESC
+LIMIT 5),
+
+BOTTOM_5 AS (SELECT t.park AS Park, t.name AS Team, ROUND(AVG(t.attendance/t.ghome), 2) AS avg_att
+FROM teams AS t
+WHERE 	yearid = 2016
+	AND t.ghome > 9
+GROUP BY t.park, t.name
+ORDER BY avg_att
+LIMIT 5)
+
+SELECT *
+FROM TOP_5
+UNION ALL
+SELECT *
+FROM BOTTOM_5
+
+
+
+--Answer:
+   PARK					TEAM					AVG_ATT
+"Dodger Stadium"		"Los Angeles Dodgers"	22859.00
+"Busch Stadium III"		"St. Louis Cardinals"	21262.00
+"Rogers Centre"			"Toronto Blue Jays"		20938.00
+"AT&T Park"				"San Francisco Giants"	20773.00
+"Wrigley Field"			"Chicago Cubs"			19953.00
+"Tropicana Field"		"Tampa Bay Rays"		7939.00
+"O.co Coliseum"			"Oakland Athletics"		9392.00
+"Progressive Field"		"Cleveland Indians"		9886.00
+"Marlins Park"			"Miami Marlins"			10636.00
+"U.S. Cellular Field"	"Chicago White Sox"		10779.00
+
+
+--Question 9: Which managers have won the TSN Manager of the Year award in both the National League (NL) and the American League (AL)? Give their full name and the teams that they were managing when they won the award.
+
+WITH NL AS (SELECT playerid, awardid, lgid, yearid
+FROM awardsmanagers
+WHERE awardid iLIKE 'TSN%'
+	AND lgid NOT iLIKE 'ML'
+	AND lgid iLIKE 'NL'),
+
+AL AS (SELECT playerid, awardid, lgid, yearid
+FROM awardsmanagers
+WHERE awardid iLIKE 'TSN%'
+	AND lgid NOT iLIKE 'ML'
+	AND lgid iLIKE 'AL')
+
+SELECT nl.playerid, p.namefirst||p.namelast AS name, nl.lgid, nl.yearid AS NL_Year, al.playerid, al.lgid, al.yearid AS AL_Year
+FROM NL
+INNER JOIN AL
+	USING (playerid)
+INNER JOIN people AS p
+	USING (playerid)
+
+
+--Answer: Jim Leyland won the TSN for each league, winning the NL in '88,'90, and '92 and then the AL in '06. Davey Johnson also won the award in each league, with the AL coming in '97 and the NL coming in '12.
+
+
+--Question 10: Find all players who hit their career highest number of home runs in 2016. Consider only players who have played in the league for at least 10 years, and who hit at least one home run in 2016. Report the players' first and last names and the number of home runs they hit in 2016.
+
+
+--Answer:
