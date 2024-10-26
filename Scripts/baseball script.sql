@@ -87,27 +87,80 @@ ORDER BY decade
 -- GROUP BY dec.decade
 
 --q6 Find the player who had the most success stealing bases in 2016, where success is measured as the percentage of stolen base attempts which are successful. (A stolen base attempt results either in a stolen base or being caught stealing.) Consider only players who attempted at least 20 stolen bases.
-SELECT p.namefirst, p.namelast, p.namegiven, player.pct_successful_steals
-FROM ((SELECT playerid, sb, cs, sb * 100 / (sb + cs) AS pct_successful_steals
+SELECT p.namefirst, p.namelast, p.namegiven, sb, cs, sb * 100 / (sb + cs) AS pct_successful_steals
 FROM batting
-WHERE (sb + cs) >= 20 AND yearid = 2016)
-
-UNION ALL
-
-(SELECT playerid, sb, cs, sb * 100 / (sb + cs) AS pct_successful_steals
-FROM fielding
-WHERE (sb + cs) >= 20 AND yearid = 2016)
-ORDER BY pct_successful_steals DESC
-LIMIT 1) AS player
 INNER JOIN people AS p
 USING (playerid)
+WHERE (sb + cs) >= 20 AND yearid = 2016
+ORDER BY pct_successful_steals DESC
 
 --q7 From 1970 – 2016, what is the largest number of wins for a team that did not win the world series? What is the smallest number of wins for a team that did win the world series? Doing this will probably result in an unusually small number of wins for a world series champion – determine why this is the case. Then redo your query, excluding the problem year. How often from 1970 – 2016 was it the case that a team with the most wins also won the world series? What percentage of the time?
-SELECT *
+SELECT teamid, yearid, g, MAX (w) AS largest_wins
 FROM teams
 WHERE wswin = 'N'
-	AND yearid BETWEEN 1970 AND 2016 
+	AND yearid BETWEEN 1970 AND 2016
+GROUP BY teamid, yearid, g
+ORDER BY largest_wins DESC
 
+SELECT teamid, yearid, g, MIN (w) AS smallest_wins
+FROM teams
+WHERE wswin = 'Y'
+	AND yearid BETWEEN 1970 AND 2016
+GROUP BY teamid, yearid, g
+ORDER BY smallest_wins DESC
 
-SELECT *
-FROM fieldingpost
+--The 1981 strike resulted in regular season games being cancelled. 
+
+SELECT teamid, yearid, g, MIN (w) AS smallest_wins
+FROM teams
+WHERE wswin = 'Y'
+	AND yearid BETWEEN 1970 AND 2016
+	AND yearid <> 1981
+GROUP BY teamid, yearid, g
+ORDER BY smallest_wins DESC
+
+WITH winners AS (SELECT yearid, wswin, MAX (w) AS largest_wins 
+					FROM teams 
+					WHERE wswin = 'Y' 
+					AND yearid BETWEEN 1970 AND 2016
+					AND yearid <> 1981
+					GROUP BY yearid, wswin)
+,
+losers AS (SELECT yearid, MAX (w) AS largest_wins 
+					FROM teams 
+					WHERE wswin = 'N'
+					AND yearid BETWEEN 1970 AND 2016
+					AND yearid <> 1981
+					GROUP BY yearid
+					ORDER BY yearid)
+,
+allw AS (SELECT w.largest_wins AS winlarge, l.largest_wins AS loselarge, yearid
+		FROM winners AS w
+		INNER JOIN losers AS l
+		USING (yearid))
+, 
+pct AS (SELECT SUM (CASE WHEN allw.winlarge >= allw.loselarge THEN 1 
+					ELSE 0
+					END) AS total_wins,
+				COUNT (yearid) AS cnt_year
+		FROM allw)
+
+SELECT ROUND((total_wins::numeric/cnt_year::numeric), 2) * 100 AS pct_time
+FROM pct
+		
+--q8 Using the attendance figures from the homegames table, find the teams and parks which had the top 5 average attendance per game in 2016 (where average attendance is defined as total attendance divided by number of games). Only consider parks where there were at least 10 games played. Report the park name, team name, and average attendance. Repeat for the lowest 5 average attendance.
+SELECT name, park, attendance/ghome AS avg_attendance
+FROM teams AS t
+WHERE yearid = '2016'
+AND ghome >= 10
+ORDER BY avg_attendance DESC
+LIMIT 5
+
+SELECT name, park, attendance/ghome AS avg_attendance
+FROM teams AS t
+WHERE yearid = '2016'
+AND ghome >= 10
+ORDER BY avg_attendance
+LIMIT 5
+
+--q9 Which managers have won the TSN Manager of the Year award in both the National League (NL) and the American League (AL)? Give their full name and the teams that they were managing when they won the award.
