@@ -164,3 +164,75 @@ ORDER BY avg_attendance
 LIMIT 5
 
 --q9 Which managers have won the TSN Manager of the Year award in both the National League (NL) and the American League (AL)? Give their full name and the teams that they were managing when they won the award.
+SELECT playerid, tsnwinners.lgid, tsnwinners.yearid, m.teamid, t.name, p.namefirst, p.namelast
+FROM 			(SELECT playerid, lgid, yearid
+				FROM awardsmanagers
+				WHERE awardid = 'TSN Manager of the Year'
+				AND playerid IN (SELECT playerid
+								FROM awardsmanagers
+								WHERE awardid = 'TSN Manager of the Year'
+								AND lgid = 'NL'
+		
+						INTERSECT
+			
+						SELECT playerid
+						FROM awardsmanagers
+						WHERE awardid = 'TSN Manager of the Year'
+						AND lgid = 'AL')) AS tsnwinners
+INNER JOIN managers AS m  --to get team id
+USING (playerid)
+INNER JOIN teams AS t --to get team name
+USING (teamid)
+INNER JOIN people AS p --to get full name
+USING (playerid)
+WHERE m.yearid = tsnwinners.yearid
+	AND m.yearid = t.yearid
+ORDER BY playerid
+
+--q10 Find all players who hit their career highest number of home runs in 2016. Consider only players who have played in the league for at least 10 years, and who hit at least one home run in 2016. Report the players' first and last names and the number of home runs they hit in 2016.
+SELECT players.playerid, players.max_hr
+FROM (WITH ten_years AS (SELECT playerid
+						FROM batting
+						GROUP BY playerid
+						HAVING COUNT (DISTINCT yearid) >= 10)
+	,
+	highest_hr AS (SELECT DISTINCT playerid, MAX (hr) AS max_hr
+			FROM batting
+			GROUP BY playerid
+			ORDER BY playerid)
+	
+	SELECT playerid, max_hr
+	FROM ten_years
+	INNER JOIN highest_hr
+	USING (playerid)) AS players
+
+INNER JOIN batting AS b
+USING (playerid)
+ORDER BY playerid
+
+
+ORDER BY playerid
+WHERE yearid = 2016
+
+
+SELECT playerid, b.hr, yearid
+FROM ten_years AS t
+INNER JOIN batting AS b
+USING (playerid)
+WHERE b.yearid = 2016
+	AND b.hr >= 1
+GROUP BY playerid, yearid
+
+
+SELECT playerid, yearid, hr
+FROM batting
+WHERE yearid = 2016
+
+SELECT *
+FROM batting
+
+
+SELECT playerid, yearid, hr
+FROM batting
+WHERE playerid = 'aaronha01'
+ 	AND yearid = '2016'
