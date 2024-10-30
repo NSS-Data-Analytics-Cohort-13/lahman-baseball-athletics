@@ -179,6 +179,8 @@ ORDER BY avghomeruns_per_game
 
 -----------------------------------------------------------------------------------------------
 6.-- Find the player who had the most success stealing bases in 2016, where success is measured as the percentage of stolen base attempts which are successful. (A stolen base attempt results either in a stolen base or being caught stealing.) Consider only players who attempted at least 20 stolen bases.
+--Stolen base attempt-caught stealing=stolen bases
+--Percent success=stolen bases/(stolen base attempts)
 
 --1st step: 
 --Create table with playerid, yearid, sb, cs 
@@ -187,19 +189,21 @@ ORDER BY avghomeruns_per_game
 --Result is hamilbi02 with 50 successful stolen bases.
 --2nd step: link this table as to a table with the people table INNER JOIN (and add the name columns that are needed from the people table)
 
-SELECT b.playerid, p.namefirst as first_name, p.namelast as last_name, sb as stolen_base_attempt, cs as caught_stealing, (sb-cs) as sucessful_stolen_base
+SELECT sub.first_name, sub.last_name, sub.successful_stolen_base, sub.stolen_base_attempts, (100*sub.successful_stolen_base/sub.stolen_base_attempts) AS percentage_success 
+FROM
+(
+SELECT b.playerid, p.namefirst as first_name, p.namelast as last_name, sb as successful_stolen_base, cs as caught_stealing, sb+cs as stolen_base_attempts
 FROM batting as b
 INNER JOIN people as p
 ON p.playerid=b.playerid
 WHERE b.sb>20 and b.yearid=2016 
-GROUP BY b.playerid, first_name,last_name, stolen_base_attempt, caught_stealing 
-ORDER BY sucessful_stolen_base DESC
-
-
+GROUP BY b.playerid, first_name,last_name,caught_stealing,successful_stolen_base  
+ORDER BY stolen_base_attempts
+) AS sub
+--A: Chris Owings, with 91% success rate fr stolen base attempts
 
 ------------------------------------------------------------------------------------------------
 7.-- From 1970 – 2016, what is the largest number of wins for a team that did not win the world series? 
---A: SEA (Seattle Mariners) with 116 wins in 2001
 
 SELECT yearid
 , teamid
@@ -211,10 +215,7 @@ FROM teams
 WHERE yearid BETWEEN 1970 and 2016 
 AND wswin<>'Y'
 ORDER BY wins DESC
-
-
---Seriespost table contains playoff level or Teams table-Teams table contains the team name, so will use Teams table
---Other relevant columns: yearid, teamid
+--A: SEA (Seattle Mariners) with 116 wins in 2001
 
 
 Select*
@@ -224,13 +225,8 @@ SELECT DISTINCT *
 FROM teams
 --WHERE round <> 'WS'
 
-	--Other relevant columns: yearid, TeamIDwinner, TeamIDloser, wins, losses
---I'm going to guess that WS means world series
-
 
 --What is the smallest number of wins for a team that did win the world series? Doing this will probably result in an unusually small number of wins for a world series champion – determine why this is the case. 
---A: TOR (Toronto Blue Jays, 37 wins in 1981)
---Per wikipedia: "Games were suspended for 50 days due to the 1981 Major League Baseball strike, causing a split season." Blue jays did terrible in the first portion of the split season. 
 
 SELECT yearid
 , teamid
@@ -240,13 +236,13 @@ SELECT yearid
 wswin as world_series
 FROM teams
 WHERE yearid BETWEEN 1970 and 2016 
-AND wswin<>'Y'
+AND wswin='Y'
 ORDER BY wins ASC
+--A: LA Dodgers, 63 wins in 1981 
+--Per wikipedia: "Games were suspended for 50 days due to the 1981 Major League Baseball strike, causing a split season." Blue jays did terrible in the first portion of the split season. 
 
 
---Then redo your query, excluding the problem year. How often from 1970 – 2016 was it the case that a team with the most wins also won the world series? What percentage of the time?
---A. Changes the result to DT (Detroit Tigers) who won 43 games in 2003
---
+--Then redo your query, excluding the problem year. 
 
 --Addition to WHERE clase to remove yearid 1981
 SELECT yearid
@@ -258,9 +254,11 @@ wswin as world_series
 FROM teams
 WHERE yearid BETWEEN 1970 and 2016 
 AND yearid <>1981
-AND wswin<>'Y'
+AND wswin='Y'
 ORDER BY wins ASC
+--A. Changes the result to St. Louis Cardinal who won 83 games in 2006
 
+--How often from 1970 – 2016 was it the case that a team with the most wins also won the world series? What percentage of the time?
 --Need WS winners
 --Need to team with most wins per year
 
@@ -277,28 +275,52 @@ AND yearid <>1981
 AND wswin='Y'
 ORDER BY wins ASC
 
---Table of teams with the most wins each year
+--Table of most wins each year
+WITH most_wins AS
+(
 SELECT DISTINCT yearid
-, teamid
-, name
 , max(w) as mostwins
-, l as losses, 
-wswin as world_series
 FROM teams
 WHERE yearid BETWEEN 1970 and 2016 
 AND yearid <>1981
---AND wswin='Y'
-GROUP BY yearid, teamid, name, losses, world_series
+GROUP BY yearid
 ORDER BY mostwins
+)
+
+--Last step: Combine both tables above to obtain teams with the most wins in the same year that they won the WS. Convert second query into a CTE and join both tables with INNER JOIN
+
+SELECT ROUND((SUM(total)/48)*100,2) AS percent_time
+FROM
+(SELECT (COUNT(t.yearid)) as total 
+, t.teamid
+, name
+, t.w as wins
+, t.wswin as world_series
+, mostwins
+FROM teams as t
+INNER JOIN most_wins
+USING (yearid)
+WHERE yearid BETWEEN 1970 and 2016 
+AND yearid <>1981
+AND wswin='Y'
+AND t.w=mostwins
+GROUP BY t.teamid
+, name
+, wins
+, world_series
+, mostwins
+ORDER BY total) AS subg
+--A: 12 years/45 years-->26.7%
 
 
 -------------------------------------------------------------------------------------------------
 --8. Using the attendance figures from the homegames table, find the teams and parks which had the top 5 average attendance per game in 2016 (where average attendance is defined as total attendance divided by number of games). Only consider parks where there were at least 10 games played. Report the park name, team name, and average attendance. Repeat for the lowest 5 average attendance.
 --A: Top: Dodger Stadium, Los Angeles Dodgers, average attendance of 45,719. 
-   --Bottom: Tropicana Field, Tampa Bay Rays, average attendance15,878
+   --Bottom: Tropicana Field, Tampa Bay Rays, average attendance 15,8
+   --************Need to clean up tables to remove duplicates
 
 
-SELECT DISTINCT sub.avg_attendance, p.park, sub.team, park_name, t.name
+SELECT DISTINCT SUM(sub.avg_attendance) AS attendance, sub.team,park_name, --,t.name--, sub.team, p.park
 FROM
 	--Subquery to get team name, park name, # of games, and attendance for the year 2016 and for # 	of games that is equal to or greater than 10. Group by clause sums games and attendance
 	(
@@ -307,21 +329,55 @@ FROM
 	INNER JOIN teams as t
 	ON h.team = t.teamid
 	WHERE games >=10 AND year=2016
-	GROUP BY h.park, h.team, t.name, h.attendance, h.games--team_name, park_name, h.attendance, h.games
-	ORDER BY avg_attendance ASC
+	GROUP BY h.park, h.team, h.attendance, h.games, t.name--team_name, park_name, h.attendance, h.games
+	ORDER BY avg_attendance DESC
 	LIMIT 5
 	) AS sub
 	--Inner join to parks table for park name
-	INNER JOIN parks AS p
-	ON p.park=sub.park
+	--INNER JOIN parks AS p
+	--ON p.park=sub.park
 	--Inner join to teams table for team name
-	INNER JOIN teams AS t
-	ON t.park=p.park_name
+	--INNER JOIN teams AS t
+	--ON t.park=p.park_name
 	--WHERE sub.team =t.teamid
-	ORDER BY sub.avg_attendance --park_name, team_name --,attendance, games
+	GROUP BY park_name--,t.name
+	ORDER BY attendance --park_name, team_name --,attendance, games
 
 ------------------------------------------------------------------------------------------------	
 --9. Which managers have won the TSN Manager of the Year award in both the National League (NL) and the American League (AL)? Give their full name and the teams that they were managing when they won the award.
+
+SELECT playerID,sum(al_award+nl_award) AS both_awards
+--, sum(al_award) as AL
+--, sum (nl_award) as NL
+,yearid
+FROM
+(
+SELECT playerid
+, yearid
+, (CASE WHEN lgid= 'AL' AND awardid= 'TSN Manager of the Year' THEN 1 ELSE 0 END) AS al_award
+, (CASE WHEN lgid= 'NL' AND awardid= 'TSN Manager of the Year' THEN 1 ELSE 0 END) AS nl_award
+FROM awardsmanagers
+) as sub 
+GROUP By
+playerID 
+, al_award
+, nl_award
+,yearid
+Order BY AL, NL 
+
+--both_awards
+
+
+--WHERE playerid = 'leylaji99'
+
+
+WHERE al_award=1 OR nl_award =1
+
+SELECT *
+FROM awardsmanagers
+WHERE awardid= 'TSN Manager of the Year'
+AND (lgid='NL' OR lgid='AL')
+
 
 SELECT DISTINCT sub.playerid, firstname, lastname, AL_win_year, NL_win_year, sub.name
 FROM
@@ -341,10 +397,10 @@ FROM
 		AND g.awardid='TSN Manager of the Year') as sub
 
 --conversion of inner joins to unions to try to eliminate duplicates
-SELECT DISTINCT sub.playerid, firstname, lastname, AL_win_year, NL_win_year, sub.name
+SELECT sub.playerid, firstname, lastname, AL_win_year, NL_win_year, sub.name
 FROM
 		--(1)Self union awardsmanagers table 
-		(SELECT DISTINCT t.playerid, t.lgid, t.yearid AS AL_win_year, e.name, p.namefirst, p.namelast --p.namefirst as firstname, p.namelast as lastname, t.lgid, g.lgid, t.yearid AS AL_win_year, g.yearid AS NL_win_year, e.name as name--,t.awardid, 
+		(SELECT DISTINCT t.playerid, p.namefirst, p.namelast, t.lgid, t.yearid AS AL_win_year, e.teamid  --p.namefirst as firstname, p.namelast as lastname, t.lgid, g.lgid, t.yearid AS AL_win_year, g.yearid AS NL_win_year, e.name as name--,t.awardid, 
 		FROM awardsmanagers as t
 		INNER JOIN people as p
 		USING (playerid)
@@ -352,15 +408,45 @@ FROM
 		ON e.lgid=t.lgid
 		WHERE t.lgid='AL' 
 		AND t.awardid= 'TSN Manager of the Year' 
+--WHERE clause subquery to look for AL and TSN Manager of the Year
 		UNION
-		SELECT g.playerid, g.lgid, g.yearid AS NL_win_year, e.name, p.namefirst, p.namelast
+		SELECT g.playerid, p.namefirst, p.namelast, g.lgid, g.yearid AS NL_win_year, e.teamid
+		--,CASE WHEN g.lgid='NL' THEN 'Y'
+		--ELSE ''
+		--END AS NL_award
 		FROM awardsmanagers as g
 		INNER JOIN people as p
 		USING (playerid)
 		INNER JOIN TEAMS as e
-		ON e.lgid=t.lgid
+		ON e.lgid=g.lgid
 		WHERE g.lgid='NL' 
-		AND g.awardid='TSN Manager of the Year'
+		AND g.awardid='TSN Manager of the Year') as sub
+WHERE lgid= 'NL'
+
+SELECT DISTINCT 
+sub.playerid
+--, sub.namefirst
+--, sub.namelast
+, sub.yearid
+, sub.al_award
+, sub.nl_award
+, sub.teamid
+FROM
+--subquery
+(
+SELECT DISTINCT t.playerid, p.namefirst, p.namelast, t.yearid,(CASE WHEN t.lgid= 'AL' THEN 'Y'
+ELSE '' END) AS al_award, (CASE when t.lgid='NL' THEN 'Y' ELSE '' END) AS nl_award, e.teamid  --p.namefirst as firstname, p.namelast as lastname, t.lgid, g.lgid, t.yearid AS AL_win_year, g.yearid AS NL_win_year, e.name as name--,t.awardid, 
+		FROM awardsmanagers as t
+		INNER JOIN people as p
+		USING (playerid)
+		INNER JOIN TEAMS as e
+		ON e.lgid=t.lgid
+		--WHERE t.lgid='AL' 
+		WHERE t.awardid= 'TSN Manager of the Year') AS sub
+--WHERE al_award= 'Y' AND nl_award ='Y'
+
+
+
 
 		Select *
 		FROM teams
@@ -385,10 +471,11 @@ FROM
 --(4) Convert to a CTE
 WITH tableforten AS
 --(2)Main query to narrow down results to players who played >10 years-->70 results
+
 (SELECT DISTINCT playerid,namefirst, namelast, homeruns, yearid
 FROM
 			(
-			--(1)Query to filter for playerid's (using batting table inner joined with pelple table), where player hit at least one home run in 2016
+			--(1)Query to filter for playerid's (using batting table inner joined with people table), where player hit at least one home run in 2016
 			--(2)Converted debut and final game to year that is an integer
 			--(3)sum the total of homeruns (which eliminates repeating player names)-->515 results
 			SELECT DISTINCT playerid, namefirst, namelast, sum(hr) as homeruns,  CAST((left(p.finalgame,4)) AS INT) AS finalgame, CAST((left(p.debut,4)) AS INT) AS debut, batting.yearid
@@ -401,7 +488,22 @@ FROM
 			) as sub
 WHERE finalgame - debut > 10
 GROUP BY homeruns, playerid, namefirst, namelast, yearid
-ORDER BY homeruns DESC)
+ORDER BY homeruns DESC),
+
+maxhr AS
+(SELECT playerid, Max(hr) as maxhomeruns, yearid 
+FROM batting
+WHERE hr<>0
+GROUP By playerid, yearid
+ORDER BY maxhomeruns desc)
+
+
+SELECT t.playerid, maxhomeruns, m.yearid, t.homeruns
+FROM maxhr as m
+INNER JOIN tableforten as t
+ON t.playerid=m.playerid and t.yearid=m.yearid
+WHERE t.homeruns=maxhomeruns
+AND m.yearid='2016'
 
 
 --Last step: How do I narrow the results to players who had their max # of homeruns in 2016?
@@ -412,16 +514,17 @@ ORDER BY homeruns DESC)
 -- WHERE yearid=2016 AND hr>=1 AND max(hr) = homeruns
 -- GROUP By playerid, homeruns
 
-SELECT playerid, t.homeruns, yearid
-FROM tableforten as t
-UNION
-SELECT playerid, Max(hr) as homeruns, yearid 
-FROM batting 
---WHERE yearid=2016 AND hr>=1 
-GROUP By playerid, yearid, t.homeruns 
-ORDER BY b.homeruns DESC
+-- SELECT playerid, homeruns, yearid
+-- FROM tableforten as t
+-- UNION
 
 
+
+SELECT playerid, maxhomeruns, b.yearid 
+FROM maxhomeruns
+INNER JOIN tableforten
+USING (playerid)
+WHERE homeruns=maxhomeruns
 
 -- SELECT (Select playerid, Max(hr) as maxhr FROM batting WHERE yearid=2016 GROUP By playerid), namefirst, namelast, homeruns
 -- FROM tableforten
@@ -445,3 +548,4 @@ WHERE playerid='arciaos01'
 	--It is thought that since left-handed pitchers are more rare, causing batters to face them less often, that they are more effective. Investigate this claim and present evidence to either support or dispute this claim. 
 	--First, determine just how rare left-handed pitchers are compared with right-handed pitchers. 	--Are left-handed pitchers more likely to win the Cy Young Award? 
 	--Are they more likely to make it into the hall of fame?
+
