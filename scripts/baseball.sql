@@ -138,7 +138,9 @@ ORDER BY success_rate desc
 
 --Question 7: From 1970 – 2016, what is the largest number of wins for a team that did not win the world series? What is the smallest number of wins for a team that did win the world series? Doing this will probably result in an unusually small number of wins for a world series champion – determine why this is the case. Then redo your query, excluding the problem year. How often from 1970 – 2016 was it the case that a team with the most wins also won the world series? What percentage of the time?
 
-SELECT MAX(w) AS wins, yearid, wswin
+SELECT 	MAX(w) AS wins
+	, 	yearid
+	, 	wswin
 FROM teams
 WHERE wswin = 'N'
 	AND	yearid > 1969
@@ -147,7 +149,8 @@ WHERE wswin = 'N'
 GROUP BY yearid, wswin
 ORDER BY wins DESC
 
-SELECT MIN(w) AS wins, yearid
+SELECT	 MIN(w) AS wins
+	,	 yearid
 FROM teams
 WHERE 	wswin = 'Y'
 	AND	yearid > 1969
@@ -160,37 +163,43 @@ ORDER BY wins
 --Solving for percentage of time teams had most wins and WS win begins here
 
 
-WITH wswins AS (SELECT MAX(w) AS wins, yearid, wswin
-FROM teams
-WHERE wswin = 'Y'
-	AND	yearid > 1969
-	AND yearid < 2017
-	AND yearid <>1981
-GROUP BY yearid, wswin
-ORDER BY yearid DESC),
+WITH wswins AS (SELECT 	MAX(w) AS wins
+					, 	yearid
+					, 	wswin
+					FROM teams
+					WHERE wswin = 'Y'
+						AND	yearid > 1969
+						AND yearid < 2017
+						AND yearid <>1981
+					GROUP BY yearid, wswin
+					ORDER BY yearid DESC),
 
-wslosses AS (SELECT MAX(w) AS wins, yearid, wswin
-FROM teams
-WHERE wswin = 'N'
-	AND	yearid > 1969
-	AND yearid < 2017
-	AND yearid <>1981
-GROUP BY yearid, wswin
-ORDER BY yearid DESC),
+wslosses AS (SELECT MAX(w) AS wins
+					, 	yearid
+					, 	wswin
+					FROM teams
+					WHERE wswin = 'N'
+						AND	yearid > 1969
+						AND yearid < 2017
+						AND yearid <>1981
+					GROUP BY yearid, wswin
+					ORDER BY yearid DESC),
 
 
-agg_ws AS (SELECT wswins.wins AS wswins, wslosses.wins AS wslosses, yearid
-FROM wswins
-INNER JOIN wslosses
-	USING (yearid)
-	ORDER BY yearid),
+agg_ws AS (SELECT 	wswins.wins AS wswins
+				, 	wslosses.wins AS wslosses
+				, 	yearid
+				FROM wswins
+				INNER JOIN wslosses
+					USING (yearid)
+					ORDER BY yearid),
 
 wins_with_max AS 
 				(SELECT 	SUM(CASE 
-				WHEN agg_ws.wswins >= agg_ws.wslosses 
-				THEN 1 ELSE 0
-				END) AS wins
-				,	COUNT(yearid) AS year_count
+					WHEN agg_ws.wswins >= agg_ws.wslosses 
+					THEN 1 ELSE 0
+					END) AS wins
+					,	COUNT(yearid) AS year_count
 FROM agg_ws)
 
 SELECT ROUND((wins::numeric/year_count::numeric), 2)*100 AS percent_of_time
@@ -228,16 +237,16 @@ FROM BOTTOM_5
 
 --Answer:
    PARK					TEAM					AVG_ATT
-"Dodger Stadium"		"Los Angeles Dodgers"	22859.00
-"Busch Stadium III"		"St. Louis Cardinals"	21262.00
-"Rogers Centre"			"Toronto Blue Jays"		20938.00
-"AT&T Park"				"San Francisco Giants"	20773.00
-"Wrigley Field"			"Chicago Cubs"			19953.00
-"Tropicana Field"		"Tampa Bay Rays"		7939.00
-"O.co Coliseum"			"Oakland Athletics"		9392.00
-"Progressive Field"		"Cleveland Indians"		9886.00
-"Marlins Park"			"Miami Marlins"			10636.00
-"U.S. Cellular Field"	"Chicago White Sox"		10779.00
+"Dodger Stadium"		"Los Angeles Dodgers"	45719.00
+"Busch Stadium III"		"St. Louis Cardinals"	42524.00
+"Rogers Centre"			"Toronto Blue Jays"		41877.00
+"AT&T Park"				"San Francisco Giants"	41546.00
+"Wrigley Field"			"Chicago Cubs"			39906.00
+"Tropicana Field"		"Tampa Bay Rays"		15878.00
+"O.co Coliseum"			"Oakland Athletics"		18784.00
+"Progressive Field"		"Cleveland Indians"		19895.00
+"Marlins Park"			"Miami Marlins"			21405.00
+"U.S. Cellular Field"	"Chicago White Sox"		21559.00
 
 
 --Question 9: Which managers have won the TSN Manager of the Year award in both the National League (NL) and the American League (AL)? Give their full name and the teams that they were managing when they won the award.
@@ -254,7 +263,7 @@ WHERE awardid iLIKE 'TSN%'
 	AND lgid NOT iLIKE 'ML'
 	AND lgid iLIKE 'AL')
 
-SELECT nl.playerid, p.namefirst||p.namelast AS name, nl.lgid, nl.yearid AS NL_Year, al.playerid, al.lgid, al.yearid AS AL_Year
+SELECT nl.playerid, CONCAT(p.namefirst,' ',p.namelast) AS name, nl.lgid, nl.yearid AS NL_Year, al.playerid, al.lgid, al.yearid AS AL_Year
 FROM NL
 INNER JOIN AL
 	USING (playerid)
@@ -268,4 +277,86 @@ INNER JOIN people AS p
 --Question 10: Find all players who hit their career highest number of home runs in 2016. Consider only players who have played in the league for at least 10 years, and who hit at least one home run in 2016. Report the players' first and last names and the number of home runs they hit in 2016.
 
 
+--This code gives the playerids for all players who have played at least 10 years in the league.
+WITH ten_yrs AS (SELECT playerid
+FROM batting
+GROUP BY playerid
+HAVING COUNT(DISTINCT yearid) >9),
+
+--This code gives the career high of homeruns per each playerid from ten_yrs table.
+HR_High AS (SELECT MAX(hr) AS hrs, ten_yrs.playerid
+FROM ten_yrs
+INNER JOIN batting
+	USING (playerid)
+GROUP BY playerid
+ORDER BY MAX(hr) desc)
+
+
+--This code then uses the playerids from the list above to achieve the rest of the question, using the people table to give the full names and HR_high table to pull the homerun numbers.
+SELECT h.playerid AS playerid, CONCAT(p.namefirst,' ',p.namelast) AS name, MAX(h.hrs) AS hrs
+FROM batting AS b
+INNER JOIN people AS p
+	USING (playerid)
+INNER JOIN hr_high AS h
+	ON h.playerid=b.playerid AND h.hrs = b.hr
+WHERE b.yearid = 2016
+	AND hrs > 0
+GROUP BY h.playerid, name
+ORDER BY hrs desc
+
+
+--This code was to show that the CTE was necessary
+/*SELECT playerid, CONCAT(p.namefirst,' ',p.namelast) AS name, SUM(b.hr) AS hrs
+FROM batting AS b
+INNER JOIN people AS p
+	USING (playerid)
+WHERE b.yearid = 2016
+GROUP BY playerid, name
+HAVING COUNT(yearid) >9
+ORDER BY hrs desc*/
+
+
 --Answer:
+"playerid"			"name"				"hrs"
+"encared01"		"Edwin Encarnacion"		42
+"canoro01"		"Robinson Cano"			39
+"napolmi01"		"Mike Napoli"			34
+"uptonju01"		"Justin Upton"			31
+"paganan01"		"Angel Pagan"			12
+"davisra01"		"Rajai Davis"			12
+"wainwad01"		"Adam Wainwright"		2
+"liriafr01"		"Francisco Liriano"		1
+"colonba01"		"Bartolo Colon"			1
+
+--Question 11. Is there any correlation between number of wins and team salary? Use data from 2000 and later to answer this question. As you do this analysis, keep in mind that salaries across the whole league tend to increase together, so you may want to look on a year-by-year basis.
+
+WITH yearly_team_sal AS (SELECT 	SUM(salary) AS team_salary
+		,	s.teamid AS teamid
+		, 	s.yearid AS yearid
+		FROM salaries AS s
+		WHERE s.yearid > 1999
+		GROUP BY 	s.teamid
+				, 	s.yearid
+		ORDER BY s.yearid DESC)
+
+SELECT 	CAST(yearly_team_sal.team_salary AS numeric)::MONEY
+	, 	t.w
+	, 	yearly_team_sal.teamid
+	, 	yearly_team_sal.yearid
+	FROM teams AS t
+		INNER JOIN yearly_team_sal
+			ON yearly_team_sal.yearid = t.yearid
+				AND yearly_team_sal.teamid = t.teamid
+	ORDER BY yearly_team_sal.team_salary
+
+--Answer: It does appear that there is some correlation between salaries and wins, but nothing that is cosistent enough to draw a direct connection between the two data points.
+
+--Question 12: In this question, you will explore the connection between number of wins and attendance.
+  -- *  Does there appear to be any correlation between attendance at home games and number of wins? </li>
+  -- *  Do teams that win the world series see a boost in attendance the following year? What about teams that made the playoffs? Making the playoffs means either being a division winner or a wild card winner.
+
+SELECT attendance, w, yearid
+FROM teams
+WHERE attendance IS NOT NULL
+	AND yearid > 2000
+ORDER BY w DESC
