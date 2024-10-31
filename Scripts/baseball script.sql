@@ -190,7 +190,7 @@ WHERE m.yearid = tsnwinners.yearid
 ORDER BY playerid
 
 --q10 Find all players who hit their career highest number of home runs in 2016. Consider only players who have played in the league for at least 10 years, and who hit at least one home run in 2016. Report the players' first and last names and the number of home runs they hit in 2016.
-SELECT players.playerid, players.max_hr
+SELECT DISTINCT p.namefirst, p.namelast, players.max_hr
 FROM (WITH ten_years AS (SELECT playerid
 						FROM batting
 						GROUP BY playerid
@@ -207,32 +207,14 @@ FROM (WITH ten_years AS (SELECT playerid
 	USING (playerid)) AS players
 
 INNER JOIN batting AS b
-USING (playerid)
-ORDER BY playerid
-
-
-ORDER BY playerid
+ON players.playerid=b.playerid AND players.max_hr=b.hr
+INNER JOIN people AS p
+ON b.playerid=p.playerid
 WHERE yearid = 2016
-
-
-SELECT playerid, b.hr, yearid
-FROM ten_years AS t
-INNER JOIN batting AS b
-USING (playerid)
-WHERE b.yearid = 2016
-	AND b.hr >= 1
-GROUP BY playerid, yearid
+	AND max_hr > 0
+ORDER BY max_hr DESC
 
 
 SELECT playerid, yearid, hr
 FROM batting
-WHERE yearid = 2016
-
-SELECT *
-FROM batting
-
-
-SELECT playerid, yearid, hr
-FROM batting
-WHERE playerid = 'aaronha01'
- 	AND yearid = '2016'
+WHERE playerid = 
