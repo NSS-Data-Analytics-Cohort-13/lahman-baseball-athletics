@@ -24,7 +24,7 @@ WHERE height=
 	(SELECT MIN(height) FROM people)
 
 -----------------------------------------------------------------------------------------------
--- 3. Find all players in the database who played at Vanderbilt University. Create a list showing each player’s first and last names as well as the total salary they earned in the major leagues. Sort this list in descending order by the total salary earned. Which Vanderbilt player earned the most money in the majors?
+-- 3. Find all players in the database who played at Vanderbilt University. Create a list showing each playerâ€™s first and last names as well as the total salary they earned in the major leagues. Sort this list in descending order by the total salary earned. Which Vanderbilt player earned the most money in the majors?
 
 --Need to eliminate duplicates but not lose the salary assocated with every player ID. Maybe remove first and last name from the inner query and then do a join with another table to bring in the names. 
 
@@ -189,28 +189,31 @@ ORDER BY avghomeruns_per_game
 --Result is hamilbi02 with 50 successful stolen bases.
 --2nd step: link this table as to a table with the people table INNER JOIN (and add the name columns that are needed from the people table)
 
-SELECT sub.first_name, sub.last_name, sub.successful_stolen_base, sub.stolen_base_attempts, (100*sub.successful_stolen_base/sub.stolen_base_attempts) AS percentage_success 
+
+SELECT sub.first_name, sub.last_name, sub.successful_stolen_base, sub.stolen_base_attempts, (100*SUM(sub.successful_stolen_base)/SUM(sub.stolen_base_attempts)) AS percentage_success 
 FROM
 (
 SELECT b.playerid, p.namefirst as first_name, p.namelast as last_name, sb as successful_stolen_base, cs as caught_stealing, sb+cs as stolen_base_attempts
 FROM batting as b
 INNER JOIN people as p
 ON p.playerid=b.playerid
-WHERE b.sb>20 and b.yearid=2016 
+WHERE (b.sb+b.cs)>=20 and b.yearid=2016 
 GROUP BY b.playerid, first_name,last_name,caught_stealing,successful_stolen_base  
 ORDER BY stolen_base_attempts
 ) AS sub
+GROUP BY sub.first_name, sub.last_name, sub.successful_stolen_base, sub.stolen_base_attempts
+ORDER BY percentage_success DESC
 --A: Chris Owings, with 91% success rate fr stolen base attempts
 
 ------------------------------------------------------------------------------------------------
-7.-- From 1970 – 2016, what is the largest number of wins for a team that did not win the world series? 
+7.-- From 1970 to 2016, what is the largest number of wins for a team that did not win the world series? 
 
 SELECT yearid
 , teamid
 , name
 , w as wins
-, l as losses, 
-wswin as world_series
+--, l as losses
+, wswin as world_series
 FROM teams
 WHERE yearid BETWEEN 1970 and 2016 
 AND wswin<>'Y'
@@ -218,22 +221,14 @@ ORDER BY wins DESC
 --A: SEA (Seattle Mariners) with 116 wins in 2001
 
 
-Select*
-FROM seriespost
-
-SELECT DISTINCT *
-FROM teams
---WHERE round <> 'WS'
-
-
---What is the smallest number of wins for a team that did win the world series? Doing this will probably result in an unusually small number of wins for a world series champion – determine why this is the case. 
+--What is the smallest number of wins for a team that did win the world series? Doing this will probably result in an unusually small number of wins for a world series champion â€“ determine why this is the case. 
 
 SELECT yearid
 , teamid
 , name
 , w as wins
-, l as losses, 
-wswin as world_series
+--, l as losses
+, wswin as world_series
 FROM teams
 WHERE yearid BETWEEN 1970 and 2016 
 AND wswin='Y'
@@ -258,9 +253,8 @@ AND wswin='Y'
 ORDER BY wins ASC
 --A. Changes the result to St. Louis Cardinal who won 83 games in 2006
 
---How often from 1970 – 2016 was it the case that a team with the most wins also won the world series? What percentage of the time?
---Need WS winners
---Need to team with most wins per year
+--How often from 1970 to 2016 was it the case that a team with the most wins also won the world series? What percentage of the time?
+
 
 --Table of WS winners
 SELECT yearid
@@ -275,193 +269,315 @@ AND yearid <>1981
 AND wswin='Y'
 ORDER BY wins ASC
 
---Table of most wins each year
+--(CTE) Table of most wins each year
 WITH most_wins AS
 (
 SELECT DISTINCT yearid
-, max(w) as mostwins
+, max(w) as mostwins, count(yearid) as total_years
 FROM teams
 WHERE yearid BETWEEN 1970 and 2016 
-AND yearid <>1981
+--AND yearid <>1981
 GROUP BY yearid
-ORDER BY mostwins
+ORDER BY mostwins, total_years
 )
 
 --Last step: Combine both tables above to obtain teams with the most wins in the same year that they won the WS. Convert second query into a CTE and join both tables with INNER JOIN
 
-SELECT ROUND((SUM(total)/48)*100,2) AS percent_time
+SELECT ROUND((SUM(total)/COUNT(m.total_years))*100,2) AS percent_time
 FROM
-(SELECT (COUNT(t.yearid)) as total 
-, t.teamid
-, name
-, t.w as wins
-, t.wswin as world_series
-, mostwins
-FROM teams as t
-INNER JOIN most_wins
-USING (yearid)
-WHERE yearid BETWEEN 1970 and 2016 
-AND yearid <>1981
-AND wswin='Y'
-AND t.w=mostwins
-GROUP BY t.teamid
-, name
-, wins
-, world_series
-, mostwins
-ORDER BY total) AS subg
+	(
+	SELECT (COUNT(t.yearid)) as total 
+	, t.teamid
+	, name
+	, t.w as wins
+	, t.wswin as world_series
+	, mostwins
+	FROM teams as t
+	INNER JOIN most_wins as m 
+	USING (yearid)
+	WHERE yearid BETWEEN 1970 and 2016 
+	AND yearid <>1981
+	AND wswin='Y'
+	AND t.w=mostwins
+	GROUP BY t.teamid
+	, name
+	, wins
+	, world_series
+	, mostwins
+	ORDER BY total
+	) AS subg
 --A: 12 years/45 years-->26.7%
 
 
 -------------------------------------------------------------------------------------------------
 --8. Using the attendance figures from the homegames table, find the teams and parks which had the top 5 average attendance per game in 2016 (where average attendance is defined as total attendance divided by number of games). Only consider parks where there were at least 10 games played. Report the park name, team name, and average attendance. Repeat for the lowest 5 average attendance.
---A: Top: Dodger Stadium, Los Angeles Dodgers, average attendance of 45,719. 
-   --Bottom: Tropicana Field, Tampa Bay Rays, average attendance 15,8
-   --************Need to clean up tables to remove duplicates
 
-
-SELECT DISTINCT SUM(sub.avg_attendance) AS attendance, sub.team,park_name, --,t.name--, sub.team, p.park
-FROM
-	--Subquery to get team name, park name, # of games, and attendance for the year 2016 and for # 	of games that is equal to or greater than 10. Group by clause sums games and attendance
-	(
-	SELECT DISTINCT h.team, h.park, (h.attendance/h.games) AS avg_attendance --t.name as team_name, p.park_name as park_name, --,h.attendance, h.team, h.park, games,
+--Select statement for: team ID, team name, park ID, park name, and calculated avg attendance
+--team ID and park ID included to reduce duplicates
+	SELECT DISTINCT h.team, t.name as team_name, h.park, p.park_name as park_name,(h.attendance/h.games) AS avg_attendance 
+--Inner joins between homegames table, teams table, and parks table
+--Inner join between homegames and teams with 2 columns, team ID and year-->This helps reduce duplicates that occur with using only either team ID or year
 	FROM homegames AS h
 	INNER JOIN teams as t
-	ON h.team = t.teamid
+	ON h.year=t.yearid AND h.team = t.teamid
+	INNER JOIN parks as p
+	ON p.park=h.park
+--WHERE criteria to narrow to teams that played at least 10 games in 2016. 
 	WHERE games >=10 AND year=2016
-	GROUP BY h.park, h.team, h.attendance, h.games, t.name--team_name, park_name, h.attendance, h.games
+	GROUP BY h.park, h.team, h.attendance, h.games, t.name,park_name
+--DESC to get top 5 teams/parks with highest avg_attendance
 	ORDER BY avg_attendance DESC
 	LIMIT 5
-	) AS sub
-	--Inner join to parks table for park name
-	--INNER JOIN parks AS p
-	--ON p.park=sub.park
-	--Inner join to teams table for team name
-	--INNER JOIN teams AS t
-	--ON t.park=p.park_name
-	--WHERE sub.team =t.teamid
-	GROUP BY park_name--,t.name
-	ORDER BY attendance --park_name, team_name --,attendance, games
+--A: Top: Dodger Stadium, Los Angeles Dodgers, average attendance of 45,719. 
+	
+SELECT DISTINCT h.team, t.name as team_name, h.park, p.park_name as park_name,(h.attendance/h.games) AS avg_attendance 
+	FROM homegames AS h
+	INNER JOIN teams as t
+	ON h.team = t.teamid AND h.year=t.yearid
+	INNER JOIN parks as p
+	ON p.park=h.park
+	WHERE games >=10 AND year=2016
+	GROUP BY h.park, h.team, h.attendance, h.games, t.name,park_name
+	ORDER BY avg_attendance ASC
+	LIMIT 5
+ --A: Bottom: Tropicana Field, Tampa Bay Rays, average attendance 15,8
 
 ------------------------------------------------------------------------------------------------	
 --9. Which managers have won the TSN Manager of the Year award in both the National League (NL) and the American League (AL)? Give their full name and the teams that they were managing when they won the award.
 
-SELECT playerID,sum(al_award+nl_award) AS both_awards
---, sum(al_award) as AL
---, sum (nl_award) as NL
-,yearid
-FROM
+
+-- SELECT 
+-- playerid
+-- , yearid
+-- , lgid
+-- --, CASE WHEN lgid='AL' THEN 'YES' ELSE 'NO' END AS al
+-- FROM awardsmanagers
+-- WHERE awardid = 'TSN Manager of the Year'
+-- AND lgid<>'ML'
+-- AND lgid<>'NL'
+
+-- SELECT 
+-- a.playerid
+-- --, namefirst
+-- --, namelast
+-- , a.yearid
+-- , a.lgid AS NL
+-- --, teamid
+-- --, inseason
+-- FROM awardsmanagers as a
+-- --INNER JOIN managershalf as h
+-- --ON h.playerid=a.playerid 
+-- --INNER JOIN people as p
+-- --ON h.playerid=p.playerid
+-- WHERE awardid = 'TSN Manager of the Year'
+-- AND a.lgid<>'ML'
+-- --AND h.inseason=1
+-- AND a.lgid<>'AL'
+
+-- SELECT *
+-- FROM awardsmanagers
+-- WHERE awardid = 'TSN Manager of the Year'
+-- AND lgid<>'ML'
+-- AND playerid='leylaji99'
+-- SELECT *
+-- FROM managershalf
+-- WHERE playerid='leylaji99'
+
+-- SELECT 
+-- a.playerid
+-- , a.yearid
+-- , a.lgid AS AL
+-- , teamid
+-- , inseason
+-- FROM awardsmanagers as a
+-- --INNER JOIN managershalf as h
+-- ON h.playerid=a.playerid 
+-- WHERE awardid = 'TSN Manager of the Year'
+-- AND a.lgid<>'ML'
+-- AND h.inseason=1
+-- AND a.lgid<>'NL'
+
+
+
+
+--Need to do another subquery for each CTE to remove the opposite award
+--(AL award winners with awardid= 'TSN Manager of the Year' AND lgid<>'ML'
+WITH AL_table AS
 (
-SELECT playerid
-, yearid
-, (CASE WHEN lgid= 'AL' AND awardid= 'TSN Manager of the Year' THEN 1 ELSE 0 END) AS al_award
-, (CASE WHEN lgid= 'NL' AND awardid= 'TSN Manager of the Year' THEN 1 ELSE 0 END) AS nl_award
-FROM awardsmanagers
-) as sub 
-GROUP By
-playerID 
-, al_award
-, nl_award
-,yearid
-Order BY AL, NL 
-
---both_awards
-
-
---WHERE playerid = 'leylaji99'
-
-
-WHERE al_award=1 OR nl_award =1
-
-SELECT *
-FROM awardsmanagers
-WHERE awardid= 'TSN Manager of the Year'
-AND (lgid='NL' OR lgid='AL')
-
-
-SELECT DISTINCT sub.playerid, firstname, lastname, AL_win_year, NL_win_year, sub.name
+SELECT sub1.playerid,namefirst, namelast, yearid AS alyear, CASE WHEN al='AL' THEN 'Yes' ELSE 'No' END AS AL
 FROM
-		--(1)Self join awardsmanagers table 
-		(SELECT DISTINCT p.namefirst as firstname, p.namelast as lastname, t.lgid, g.lgid, t.yearid AS AL_win_year, g.yearid AS NL_win_year, e.name as name--,t.awardid, t.playerid AS playerid, 
-		FROM awardsmanagers as t
-		INNER JOIN awardsmanagers as g
-		using (playerid)
-		INNER JOIN people as p
-		USING (playerid)
-		INNER JOIN TEAMS as e
-		ON e.lgid=t.lgid
-		--(2)Criteria to seach for managers have won the TSN Manager of the Year award in both NL and AL
-		WHERE t.lgid='AL' 
-		AND g.lgid='NL' 
-		AND t.awardid= 'TSN Manager of the Year' 
-		AND g.awardid='TSN Manager of the Year') as sub
+		(
+		SELECT  playerID, awardID, yearid, lgid as AL, lgid as NL
+		FROM awardsmanagers
+		WHERE awardid= 'TSN Manager of the Year' AND lgid<>'ML'
+		) as sub1
+INNER JOIN people as p
+ON p.playerid=sub1.playerid
+),
 
---conversion of inner joins to unions to try to eliminate duplicates
-SELECT sub.playerid, firstname, lastname, AL_win_year, NL_win_year, sub.name
-FROM
-		--(1)Self union awardsmanagers table 
-		(SELECT DISTINCT t.playerid, p.namefirst, p.namelast, t.lgid, t.yearid AS AL_win_year, e.teamid  --p.namefirst as firstname, p.namelast as lastname, t.lgid, g.lgid, t.yearid AS AL_win_year, g.yearid AS NL_win_year, e.name as name--,t.awardid, 
-		FROM awardsmanagers as t
-		INNER JOIN people as p
-		USING (playerid)
-		INNER JOIN TEAMS as e
-		ON e.lgid=t.lgid
-		WHERE t.lgid='AL' 
-		AND t.awardid= 'TSN Manager of the Year' 
---WHERE clause subquery to look for AL and TSN Manager of the Year
-		UNION
-		SELECT g.playerid, p.namefirst, p.namelast, g.lgid, g.yearid AS NL_win_year, e.teamid
-		--,CASE WHEN g.lgid='NL' THEN 'Y'
-		--ELSE ''
-		--END AS NL_award
-		FROM awardsmanagers as g
-		INNER JOIN people as p
-		USING (playerid)
-		INNER JOIN TEAMS as e
-		ON e.lgid=g.lgid
-		WHERE g.lgid='NL' 
-		AND g.awardid='TSN Manager of the Year') as sub
-WHERE lgid= 'NL'
-
-SELECT DISTINCT 
-sub.playerid
---, sub.namefirst
---, sub.namelast
-, sub.yearid
-, sub.al_award
-, sub.nl_award
-, sub.teamid
-FROM
---subquery
+NL_table AS
 (
-SELECT DISTINCT t.playerid, p.namefirst, p.namelast, t.yearid,(CASE WHEN t.lgid= 'AL' THEN 'Y'
-ELSE '' END) AS al_award, (CASE when t.lgid='NL' THEN 'Y' ELSE '' END) AS nl_award, e.teamid  --p.namefirst as firstname, p.namelast as lastname, t.lgid, g.lgid, t.yearid AS AL_win_year, g.yearid AS NL_win_year, e.name as name--,t.awardid, 
-		FROM awardsmanagers as t
-		INNER JOIN people as p
-		USING (playerid)
-		INNER JOIN TEAMS as e
-		ON e.lgid=t.lgid
-		--WHERE t.lgid='AL' 
-		WHERE t.awardid= 'TSN Manager of the Year') AS sub
---WHERE al_award= 'Y' AND nl_award ='Y'
+SELECT sub2.playerid
+, namefirst,namelast
+, yearid as nlyear
+, CASE WHEN al='NL' THEN 'Yes' ELSE 'No' END AS NL
+FROM
+		(
+		SELECT  playerID, awardID, yearid, lgid as AL, lgid as NL
+		FROM awardsmanagers
+		WHERE awardid= 'TSN Manager of the Year' AND lgid<>'ML'
+		) as sub2
+INNER JOIN people as p
+ON p.playerid=sub2.playerid
+)
+
+SELECT sub3.namefirst, sub3.namelast, sub3.alyear, sub3.nlyear, sub3.both_awards-- sub3.name,
+--, CASE WHEN AL='Yes' AND NL='Yes' THEN 'Yes' ELSE 'No' END AS both_awards
+FROM
+		(
+		Select a.playerID
+		, a.namefirst
+		, a.namelast
+		, alyear
+		, nlyear
+		, CASE WHEN AL='Yes' AND NL='Yes' THEN 'Yes' ELSE 'No' END AS both_awards
+		FROM AL_table as a
+		INNER JOIN NL_table as n
+		ON a.playerid=n.playerid
+		--INNER JOIN teams as t
+		--ON t.yearid=n.yearid 
+		--INNER JOIN people as p
+		--ON p.playerid=a.playerid
+		) as sub3
+--INNER JOIN managershalf as h
+--ON h.playerid=sub3.playerid
+WHERE both_awards='Yes' 
+--AND INSEASON=1
+
+
+
+-- SELECT *
+-- FROM player
+
+
+-- SELECT playerID,sum(al_award+nl_award) AS both_awards
+-- --, sum(al_award) as AL
+-- --, sum (nl_award) as NL
+-- ,yearid
+-- FROM
+-- (
+-- SELECT playerid
+-- , yearid
+-- , (CASE WHEN lgid= 'AL' THEN 1 ELSE 0 END) AS al_award
+-- , (CASE WHEN lgid= 'NL' THEN 1 ELSE 0 END) AS nl_award
+-- FROM awardsmanagers
+-- WHERE awardid= 'TSN Manager of the Year'
+-- ) as sub 
+-- WHERE al_award <> 0 AND nl_award<>0
+-- GROUP By
+-- playerID 
+-- , al_award
+-- , nl_award
+-- ,yearid
+-- Order BY al_award, nl_award
+
+-- --both_awards
+
+-- --WHERE playerid = 'leylaji99'
+
+
+-- WHERE al_award=1 OR nl_award =1
+
+-- SELECT *
+-- FROM awardsmanagers
+-- WHERE awardid= 'TSN Manager of the Year'
+-- AND (lgid='NL' OR lgid='AL')
+
+
+-- SELECT DISTINCT sub.playerid, firstname, lastname, AL_win_year, NL_win_year, sub.name
+-- FROM
+-- 		--(1)Self join awardsmanagers table 
+-- 		(SELECT DISTINCT p.namefirst as firstname, p.namelast as lastname, t.lgid, g.lgid, t.yearid AS AL_win_year, g.yearid AS NL_win_year, e.name as name--,t.awardid, t.playerid AS playerid, 
+-- 		FROM awardsmanagers as t
+-- 		INNER JOIN awardsmanagers as g
+-- 		using (playerid)
+-- 		INNER JOIN people as p
+-- 		USING (playerid)
+-- 		INNER JOIN TEAMS as e
+-- 		ON e.lgid=t.lgid
+-- 		--(2)Criteria to seach for managers have won the TSN Manager of the Year award in both NL and AL
+-- 		WHERE t.lgid='AL' 
+-- 		AND g.lgid='NL' 
+-- 		AND t.awardid= 'TSN Manager of the Year' 
+-- 		AND g.awardid='TSN Manager of the Year') as sub
+
+-- --conversion of inner joins to unions to try to eliminate duplicates
+-- SELECT sub.playerid, firstname, lastname, AL_win_year, NL_win_year, sub.name
+-- FROM
+-- 		--(1)Self union awardsmanagers table 
+-- 		(SELECT DISTINCT t.playerid, p.namefirst, p.namelast, t.lgid, t.yearid AS AL_win_year, e.teamid  --p.namefirst as firstname, p.namelast as lastname, t.lgid, g.lgid, t.yearid AS AL_win_year, g.yearid AS NL_win_year, e.name as name--,t.awardid, 
+-- 		FROM awardsmanagers as t
+-- 		INNER JOIN people as p
+-- 		USING (playerid)
+-- 		INNER JOIN TEAMS as e
+-- 		ON e.lgid=t.lgid
+-- 		WHERE t.lgid='AL' 
+-- 		AND t.awardid= 'TSN Manager of the Year' 
+-- --WHERE clause subquery to look for AL and TSN Manager of the Year
+-- 		UNION
+-- 		SELECT g.playerid, p.namefirst, p.namelast, g.lgid, g.yearid AS NL_win_year, e.teamid
+-- 		--,CASE WHEN g.lgid='NL' THEN 'Y'
+-- 		--ELSE ''
+-- 		--END AS NL_award
+-- 		FROM awardsmanagers as g
+-- 		INNER JOIN people as p
+-- 		USING (playerid)
+-- 		INNER JOIN TEAMS as e
+-- 		ON e.lgid=g.lgid
+-- 		WHERE g.lgid='NL' 
+-- 		AND g.awardid='TSN Manager of the Year') as sub
+-- WHERE lgid= 'NL'
+
+-- SELECT DISTINCT 
+-- sub.playerid
+-- --, sub.namefirst
+-- --, sub.namelast
+-- , sub.yearid
+-- , sub.al_award
+-- , sub.nl_award
+-- , sub.teamid
+-- FROM
+-- --subquery
+-- (
+-- SELECT DISTINCT t.playerid, p.namefirst, p.namelast, t.yearid,(CASE WHEN t.lgid= 'AL' THEN 'Y'
+-- ELSE '' END) AS al_award, (CASE when t.lgid='NL' THEN 'Y' ELSE '' END) AS nl_award, e.teamid  --p.namefirst as firstname, p.namelast as lastname, t.lgid, g.lgid, t.yearid AS AL_win_year, g.yearid AS NL_win_year, e.name as name--,t.awardid, 
+-- 		FROM awardsmanagers as t
+-- 		INNER JOIN people as p
+-- 		USING (playerid)
+-- 		INNER JOIN TEAMS as e
+-- 		ON e.lgid=t.lgid
+-- 		--WHERE t.lgid='AL' 
+-- 		WHERE t.awardid= 'TSN Manager of the Year') AS sub
+-- --WHERE al_award= 'Y' AND nl_award ='Y'
 
 
 
 
-		Select *
-		FROM teams
+-- 		Select *
+-- 		FROM teams
 	
 	
-		--(2)Criteria to seach for managers have won the TSN Manager of the Year award in both NL and AL
-		WHERE t.lgid='AL' 
-		AND g.lgid='NL' 
-		AND t.awardid= 'TSN Manager of the Year' 
-		AND g.awardid='TSN Manager of the Year') as sub
+-- 		--(2)Criteria to seach for managers have won the TSN Manager of the Year award in both NL and AL
+-- 		WHERE t.lgid='AL' 
+-- 		AND g.lgid='NL' 
+-- 		AND t.awardid= 'TSN Manager of the Year' 
+-- 		AND g.awardid='TSN Manager of the Year') as sub
 
 
 
 ------------------------------------------------------------------------------------------------
 --10. Find all players who hit their career highest number of home runs in 2016. Consider only players who have played in the league for at least 10 years, and who hit at least one home run in 2016. Report the players' first and last names and the number of home runs they hit in 2016.
+--Need to do COUNT(DISTINT
 
 -- select *
 -- from people
@@ -472,38 +588,49 @@ ELSE '' END) AS al_award, (CASE when t.lgid='NL' THEN 'Y' ELSE '' END) AS nl_awa
 WITH tableforten AS
 --(2)Main query to narrow down results to players who played >10 years-->70 results
 
-(SELECT DISTINCT playerid,namefirst, namelast, homeruns, yearid
+(SELECT DISTINCT playerid,namefirst, namelast, homeruns--, yearid
 FROM
 			(
 			--(1)Query to filter for playerid's (using batting table inner joined with people table), where player hit at least one home run in 2016
 			--(2)Converted debut and final game to year that is an integer
 			--(3)sum the total of homeruns (which eliminates repeating player names)-->515 results
-			SELECT DISTINCT playerid, namefirst, namelast, sum(hr) as homeruns,  CAST((left(p.finalgame,4)) AS INT) AS finalgame, CAST((left(p.debut,4)) AS INT) AS debut, batting.yearid
+			SELECT DISTINCT playerid, namefirst, namelast, sum(hr) as homeruns,  CAST((left(p.finalgame,4)) AS INT) AS finalgame, CAST((left(p.debut,4)) AS INT) AS debut--, batting.yearid
 			FROM batting
 			INNER JOIN people AS p
 			USING (playerid)
 			WHERE yearid=2016 AND hr>=1
-			GROUP BY playerid, namefirst, namelast, finalgame, debut, batting.yearid
+			GROUP BY playerid, namefirst, namelast, finalgame, debut--, batting.yearid
 			ORDER BY homeruns
 			) as sub
 WHERE finalgame - debut > 10
-GROUP BY homeruns, playerid, namefirst, namelast, yearid
+GROUP BY homeruns, playerid, namefirst, namelast--, yearid
 ORDER BY homeruns DESC),
 
 maxhr AS
-(SELECT playerid, Max(hr) as maxhomeruns, yearid 
+(
+SELECT playerid
+, Max(hr) as maxhomeruns
+, yearid 
 FROM batting
-WHERE hr<>0
+WHERE hr<>0 
+AND yearid=2016
 GROUP By playerid, yearid
-ORDER BY maxhomeruns desc)
+ORDER BY maxhomeruns desc
+)
 
 
-SELECT t.playerid, maxhomeruns, m.yearid, t.homeruns
+SELECT DISTINCT 
+--m.playerid, 
+maxhomeruns
+, m.yearid
+, t.homeruns
+, t.namefirst
+, t.namelast
 FROM maxhr as m
 INNER JOIN tableforten as t
-ON t.playerid=m.playerid and t.yearid=m.yearid
+ON t.playerid=m.playerid --and t.yearid=m.yearid
 WHERE t.homeruns=maxhomeruns
-AND m.yearid='2016'
+--AND m.yearid='2016'
 
 
 --Last step: How do I narrow the results to players who had their max # of homeruns in 2016?
